@@ -1,10 +1,10 @@
 import Lake
 open Lake DSL
 
-package «lean-hm» where
+package «lean-lam» where
   -- add package configuration options here
 
-lean_lib «LeanHm» where
+lean_lib «LeanLam» where
   -- add library configuration options here
 
 require std from git "https://github.com/leanprover/std4" @ "v4.4.0"
