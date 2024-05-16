@@ -24,15 +24,15 @@ syntax " ⟪ " lam " ⟫ " : term
 
 -- Our macro rules perform the "obvious" translation:
 macro_rules
-  | `(⟪ $num:num ⟫)            => `(Var $num)
-  | `(⟪ $x:lam $y:lam ⟫) => `(App ⟪ $x ⟫ ⟪ $y ⟫)
-  | `(⟪ λ.$x:lam ⟫) => `(Lam ⟪ $x ⟫)
-  | `(⟪ ( $x ) ⟫)              => `( ⟪ $x ⟫ )
+  | `(⟪ $num:num ⟫)       => `(Var $num)
+  | `(⟪ $x:lam $y:lam ⟫)  => `(App ⟪ $x ⟫ ⟪ $y ⟫)
+  | `(⟪ λ.$x:lam ⟫)       => `(Lam ⟪ $x ⟫)
+  | `(⟪ ( $x ) ⟫)         => `( ⟪ $x ⟫ )
 
 def formatExp : (e : Exp) → Std.Format
-| Var i => repr i
-| App f a => "(" ++ (formatExp f) ++ " " ++ (formatExp a) ++ ")"
-| Lam b => "λ." ++ formatExp b
+| Var i    => repr i
+| App f a  => "(" ++ (formatExp f) ++ " " ++ (formatExp a) ++ ")"
+| Lam b    => "λ." ++ formatExp b
 
 
 -- inductive Sub
@@ -84,10 +84,10 @@ def subst (target : Exp) (depth : Nat) (arg : Exp) : Exp :=
   | Lam body => Lam (subst body (depth + 1) arg)
   | App f a => App (subst f depth arg) (subst a depth arg)
 
-def βreduce : (e : Exp) → Exp
-| App (Lam body) arg => subst body 0 arg
-| App a b => App a b
-| Lam body => Lam body
+partial def βreduce : (e : Exp) → Exp
+| App (Lam body) arg => βreduce $ subst body 0 arg
+| App a b => App (βreduce a) (βreduce b)
+| Lam body => Lam $ βreduce body
 | Var n => Var n
 
 def reduceN : (e : Exp) → (fuel : Nat) → Exp
@@ -96,7 +96,6 @@ def reduceN : (e : Exp) → (fuel : Nat) → Exp
   let y := βreduce e
   dbg_trace ("fuel: " ++ repr (n + 1) ++ " val: " ++ formatExp y)
   if y == e then e else reduceN y n
-
 
 def y := ⟪λ.(λ. 1 (0 0)) (λ. 1 (0 0)) ⟫
 #eval (formatExp (reduceN (App y (Var 5)) 4))
