@@ -14,7 +14,7 @@ namespace Exp
 
 declare_syntax_cat lam
 syntax num      : lam
-syntax term     : lam
+syntax ident    : lam
 syntax lam lam  : lam
 syntax "λ." lam : lam
 syntax " ( " lam " ) " : lam -- bracketed expressions
@@ -25,16 +25,16 @@ syntax " ⟪ " lam " ⟫ " : term
 
 -- Our macro rules perform the "obvious" translation:
 macro_rules
-  | `(⟪ $num:num ⟫)       => `(Var $num)
-  | `(⟪ $t:term ⟫)        => `($t)
-  | `(⟪ $x:lam $y:lam ⟫)  => `(App ⟪ $x ⟫ ⟪ $y ⟫)
-  | `(⟪ λ.$x:lam ⟫)       => `(Lam ⟪ $x ⟫)
-  | `(⟪ ( $x:lam ) ⟫)     => `( ⟪ $x ⟫ )
+  | `(⟪ $num:num ⟫)      => `(Var $num)
+  | `(⟪ $i:ident ⟫)      => `($i)
+  | `(⟪ $x:lam $y:lam ⟫) => `(App ⟪ $x ⟫ ⟪ $y ⟫)
+  | `(⟪ λ.$x:lam ⟫)      => `(Lam ⟪ $x ⟫)
+  | `(⟪ ( $x:lam ) ⟫)    => `(⟪ $x ⟫)
 
 def formatExp : (e : Exp) → Std.Format
-| Var i    => repr i
-| App f a  => "(" ++ (formatExp f) ++ " " ++ (formatExp a) ++ ")"
-| Lam b    => "λ." ++ formatExp b
+| Var i   => repr i
+| App f a => "(" ++ (formatExp f) ++ " " ++ (formatExp a) ++ ")"
+| Lam b   => "λ." ++ formatExp b
 
 
 /-
@@ -62,23 +62,41 @@ def subst (target : Exp) (depth : Nat) (arg : Exp) : Exp :=
   | Lam body => Lam (subst body (depth + 1) arg)
   | App f a => App (subst f depth arg) (subst a depth arg)
 
-partial def βreduce : (e : Exp) → Exp
-| App (Lam body) arg => βreduce $ subst body 0 arg
-| App a b => App (βreduce a) (βreduce b)
-| Lam body => Lam $ βreduce body
-| Var n => Var n
+-- Compute the β-normal form of the input (if it exists).
+-- This uses normal order evaluation.
+def β : Nat → Exp → Exp
+| 0, e => e
+| n + 1, e => match e with
+  | App (Lam body) arg => β n (subst body 0 arg)
+  | App a b =>
+    let r := β n a
+    if r != a
+    -- if β changed a then we start again
+    then β n (App r b)
+    -- otherwise continnue to b
+    else App a (β n b)
+  | Lam body => Lam (β n body)
+  | Var n => Var n
 
-def reduceN : (e : Exp) → (fuel : Nat) → Exp
-| e, 0 => e
-| e, n + 1 =>
-  let y := βreduce e
-  dbg_trace ("fuel: " ++ repr (n + 1) ++ " val: " ++ formatExp y)
-  if y == e then e else reduceN y n
+-- booleans
+def true := ⟪ λ.λ.1 ⟫
+def false := ⟪ λ.λ.0 ⟫
+def ite := ⟪ λ.λ.λ.2 1 0 ⟫
 
-def y := ⟪λ.(λ. 1 (0 0)) (λ. 1 (0 0)) ⟫
-#eval (formatExp (reduceN (App y (Var 5)) 4))
-#eval formatExp $ βreduce ⟪ (λ.λ.0 1) 0⟫
+-- numbers
+def zero := ⟪ λ.λ.0 ⟫
+def one := ⟪ λ.λ.1 0 ⟫
+def two := ⟪ λ.λ.1 (1 0) ⟫
+def succ := ⟪ λ.λ.λ. 1 (2 1 0) ⟫
+
+def add := ⟪ λ.λ.1 succ 0 ⟫
+
+
+def y := ⟪ λ.(λ. 1 (0 0)) (λ. 1 (0 0)) ⟫
+#eval formatExp $ β 10 ⟪ (λ.λ.0 1) 0⟫
 #reduce ⟪ λ.λ.0 1 ⟫
+#eval (formatExp (β 10 (⟪y 5⟫)))
+#eval (⟪ y 5 ⟫)
 
 
 end Exp
