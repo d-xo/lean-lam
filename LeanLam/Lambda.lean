@@ -13,7 +13,8 @@ deriving Repr, BEq
 namespace Exp
 
 declare_syntax_cat lam
-syntax num      : lam -- nat for Arith.nat
+syntax num      : lam
+syntax term     : lam
 syntax lam lam  : lam
 syntax "λ." lam : lam
 syntax " ( " lam " ) " : lam -- bracketed expressions
@@ -25,9 +26,10 @@ syntax " ⟪ " lam " ⟫ " : term
 -- Our macro rules perform the "obvious" translation:
 macro_rules
   | `(⟪ $num:num ⟫)       => `(Var $num)
+  | `(⟪ $t:term ⟫)        => `($t)
   | `(⟪ $x:lam $y:lam ⟫)  => `(App ⟪ $x ⟫ ⟪ $y ⟫)
   | `(⟪ λ.$x:lam ⟫)       => `(Lam ⟪ $x ⟫)
-  | `(⟪ ( $x ) ⟫)         => `( ⟪ $x ⟫ )
+  | `(⟪ ( $x:lam ) ⟫)     => `( ⟪ $x ⟫ )
 
 def formatExp : (e : Exp) → Std.Format
 | Var i    => repr i
