@@ -37,30 +37,6 @@ def formatExp : (e : Exp) → Std.Format
 | Lam b    => "λ." ++ formatExp b
 
 
--- inductive Sub
--- | Inc : Nat → Sub
--- | Extend : Exp → Sub → Sub
--- | Compose : Sub → Sub → Sub
---
--- def lift (s : Sub) : Sub := Sub.Extend (Var 0) (Sub.Compose s (Sub.Inc 1))
---
--- mutual
---
--- partial def apply : Sub → Nat → Exp
---   | (Sub.Inc k), x => Var (k + x)
---   | (Sub.Extend x _), 0 => x
---   | (Sub.Extend _ s), (x + 1) => apply s x
---   | (Sub.Compose s1 s2), x => subst s1 (apply s1 x)
---
--- partial def subst (s : Sub) (e : Exp) : Exp :=
---   match e with
---   | Var i => apply s i
---   | App e1 e2 => App (subst s e1) (subst s e2)
---   | Lam e => Lam (subst (lift s) e)
---
--- end
-
-
 /-
 In the β-reduction (λ M) N, for example, we must
 
