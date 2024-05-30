@@ -19,11 +19,9 @@ syntax lam lam  : lam
 syntax "λ." lam : lam
 syntax " ( " lam " ) " : lam -- bracketed expressions
 
--- Auxiliary notation for translating `arith` into `term`
+-- Auxiliary notation for translating `lam` into `term`
 syntax " ⟪ " lam " ⟫ " : term
 
-
--- Our macro rules perform the "obvious" translation:
 macro_rules
   | `(⟪ $num:num ⟫)      => `(Var $num)
   | `(⟪ $i:ident ⟫)      => `($i)
@@ -47,23 +45,8 @@ In the β-reduction (λ M) N, for example, we must
 3. replace n1, n2, ..., nk with N, suitably incrementing the free variables occurring in N each time, to match the number of λ-binders, under which the corresponding variable occurs when N substitutes for one of the ni.
 -/
 
-def incrementFree (e : Exp) (incBy : Nat) (depth : Nat) : Exp := match e with
-| Var i => if i ≥ depth then Var (i + incBy) else Var i
-| App f a => App (incrementFree f incBy depth) (incrementFree a incBy depth)
-| Lam body => Lam (incrementFree body incBy (depth + 1))
-
-
-def subst (target : Exp) (depth : Nat) (arg : Exp) : Exp :=
-  match target with
-  | Var idx =>
-      if idx == depth then (incrementFree arg depth 0)
-      else if idx > depth then Var (idx - 1) -- decrement because we stripped a lambda
-      else Var idx
-  | Lam body => Lam (subst body (depth + 1) arg)
-  | App f a => App (subst f depth arg) (subst a depth arg)
-
 -- Compute the β-normal form of the input (if it exists).
--- This uses normal order evaluation.
+-- This uses normal order evaluation (a.k.a lazy).
 def β : Nat → Exp → Exp
 | 0, e => e
 | n + 1, e => match e with
@@ -77,6 +60,21 @@ def β : Nat → Exp → Exp
     else App a (β n b)
   | Lam body => Lam (β n body)
   | Var n => Var n
+where
+  subst (target : Exp) (depth : Nat) (arg : Exp) : Exp :=
+    match target with
+    | Var idx =>
+        if idx == depth then (incrementFree arg depth 0)
+        else if idx > depth then Var (idx - 1) -- decrement because we stripped a lambda
+        else Var idx
+    | Lam body => Lam (subst body (depth + 1) arg)
+    | App f a => App (subst f depth arg) (subst a depth arg)
+
+  incrementFree (e : Exp) (incBy : Nat) (depth : Nat) : Exp := match e with
+  | Var i => if i ≥ depth then Var (i + incBy) else Var i
+  | App f a => App (incrementFree f incBy depth) (incrementFree a incBy depth)
+  | Lam body => Lam (incrementFree body incBy (depth + 1))
+
 
 -- booleans
 def true := ⟪ λ.λ.1 ⟫
