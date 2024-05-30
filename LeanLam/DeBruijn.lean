@@ -1,7 +1,7 @@
 import Lean
 
 -- the lambda calculus
-namespace Lambda
+namespace DeBruijn
 
 -- de bruijn indexed lambda terms
 inductive Exp
@@ -98,4 +98,4 @@ def y := ⟪ λ.(λ. 1 (0 0)) (λ. 1 (0 0)) ⟫
 
 
 end Exp
-end Lambda
+end DeBruijn
