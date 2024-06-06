@@ -41,6 +41,7 @@ def formatExp : (e : Exp) → Std.Format
 
 --
 
+-- TODO: this doesn't actually need to be partial...
 partial def subst (target : Exp) (var : String) (arg : Exp) : Exp :=
   match target with
   | Var nm => if nm == var then arg else Var nm
