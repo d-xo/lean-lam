@@ -25,14 +25,6 @@ abbrev Γ := Lean.HashMap Exp Ty
 inductive Judgement where
 | Judgement (ctx : Γ) (exp : Exp) (ty : Ty) : Judgement
 
-def typecheck : (judgement : Judgement) → Bool
-| .Judgement _ (.Num _) .Int => true
-| .Judgement _ .Unit .Unit => true
-| .Judgement ctx (.Add l r) .Int
-  => typecheck (.Judgement ctx l .Int) && typecheck (.Judgement ctx r .Int)
--- | .Judgement ctx (.App fn arg) τ' => typecheck (.Judgement ctx fn (.Arrow τ τ'))
-| _ => .false
-
 def infer (ctx : Γ) : (exp : Exp) → Option Ty
 | .Var s => HashMap.find? ctx (.Var s)
 | .Num _ => some .Int
@@ -52,5 +44,17 @@ def infer (ctx : Γ) : (exp : Exp) → Option Ty
   | .Arrow arg ret => if arg == τ' then some ret else none
   | _ => none
 | .Unit => some .Unit
+
+def typecheck : (judgement : Judgement) → Bool
+| .Judgement ctx exp ty => infer ctx exp == some ty
+
+inductive Judge : Γ → Exp → Ty → Type u where
+| TInt : Judge ctx (.Num n) (.Int)
+| TUnit : Judge ctx .Unit .Unit
+| TAdd (_ : Judge ctx l .Int) (_ : Judge ctx r .Int) : Judge ctx (.Add l r) .Int
+| TAbs (_ : Judge (HashMap.insert ctx (.Var s) τ) body τ') : Judge ctx (.Lam nm τ body) (.Arrow τ τ')
+| TApp (_ : Judge ctx fn (.Arrow τ ret)) (_ : Judge ctx arg τ) : Judge ctx (.App fn arg) ret
+
+theorem add104 : Judge empty (.Add (.Num 10) (.Num 4)) .Int := .TAdd .TInt .TInt
 
 end STLC
