@@ -39,10 +39,22 @@ def formatExp : (e : Exp) → Std.Format
 
 #eval formatExp ⟪ λ"x".λ"y"."z" ⟫
 
---
+-- rename all references to `before` in `exp` to refer to `after`
+-- INVARIANT: `after` is fresh in all scopes contained in `exp`
+def rename (exp : Exp) (before : String) (after : String) := match exp with
+| Var nm => if nm == before then Var after else Var nm
+| App a b => App (rename a before after) (rename b before after)
+| Lam nm body =>
+  if nm == before
+  -- if nm == before then it is rebound in body and we don't rename further
+  then Lam nm body
+  -- we assume that `after` is always fresh in all scopes, so we can safely
+  -- rename in body without further checks
+  else Lam nm (rename body before after)
+
 
 -- TODO: this doesn't actually need to be partial...
-partial def subst (target : Exp) (var : String) (arg : Exp) : Exp :=
+def subst (target : Exp) (var : String) (arg : Exp) : Exp :=
   match target with
   | Var nm => if nm == var then arg else Var nm
   | App a b => App (subst a var arg) (subst b var arg)
@@ -54,8 +66,40 @@ partial def subst (target : Exp) (var : String) (arg : Exp) : Exp :=
         -- replace all references to `nm` in `body` to `fresh`
         let renamed := rename body nm fresh
         -- substitute references to `var` with `renamed` in the body
+        have foo : sizeOf renamed < 1 + sizeOf nm + sizeOf body := by
+          unfold rename
+          induction body with
+          | Var α =>
+              simp
+              split
+                -- TODO: this is the core fact that we need for the `Var` case.
+                -- I'm actually not sure it's true, but I also think it shouldn't matter for termination. Is there some better termination metric than `sizeOf` that I can use? I want something that ignores the length of strings within `Var`s since those are not iterated over here and we shouldn't have to care.
+              · have thm : sizeOf fresh < sizeOf nm + (1 + sizeOf nm) := by
+                  sorry
+
+
+                simp [*]
+                rw [Nat.add_comm, Nat.add_one (sizeOf fresh)]
+                rw [Nat.add_comm 1, Nat.add_assoc, Nat.add_one]
+                apply Nat.succ_lt_succ thm
+              · simp
+                have lt : ∀ (x y : Nat),  y > 0 → x < y + x := by
+                  intros x y
+                  induction x with
+                  | zero => simp
+                  | succ α ih => intros h; apply (Nat.succ_lt_succ (ih h))
+                apply lt
+                have lt'' : ∀ m : Nat, 1 + m > 0 := by
+                  intros m
+                  induction m with
+                  | zero => simp
+                  | succ μ ih => apply Nat.zero_lt_succ
+                apply lt''
+          | App α β => sorry
+          | Lam α β => sorry
         Lam fresh (subst renamed var arg)
       else Lam nm (subst body var arg)
+  termination_by target
 where
   -- traverses `exp` and checks if `nm` is a free variable
   freeIn (exp : Exp) (nm : String) : Bool := match exp with
@@ -65,19 +109,6 @@ where
       if nm == arg
       then False
       else freeIn body nm
-
-  -- rename all references to `before` in `exp` to refer to `after`
-  -- INVARIANT: `after` is fresh in all scopes contained in `exp`
-  rename (exp : Exp) (before : String) (after : String) := match exp with
-  | Var nm => if nm == before then Var after else Var nm
-  | App a b => App (rename a before after) (rename b before after)
-  | Lam nm body =>
-    if nm == before
-    -- if nm == before then it is rebound in body and we don't rename further
-    then Lam nm body
-    -- we assume that `after` is always fresh in all scopes, so we can safely
-    -- rename in body without further checks
-    else Lam nm (rename body before after)
 
   -- generates a name that:
   --  1. is not the same as `var`
