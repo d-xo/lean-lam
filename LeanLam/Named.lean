@@ -52,34 +52,15 @@ def rename (exp : Exp) (before : String) (after : String) := match exp with
   -- rename in body without further checks
   else Lam nm (rename body before after)
 
--- gets the numeric suffix from a string if it is of the form
--- "varX" where X is a Nat
-def parseString (str : String) : Nat :=
-  if str.startsWith "var"
-  then Option.getD (str.drop 3).toNat? 0
-  else 0
-
--- finds the highest suffix of all variables of the form "varX" in `arg`
-def findHighestIdx : (arg : Exp) → Nat
-| Var s => parseString s
-| App a b => max (findHighestIdx a) (findHighestIdx b)
-| Lam nm body => max (parseString nm) (findHighestIdx body)
-
--- generates a name that:
---  1. is not the same as `var`
---  2. is not free in `arg`
---  3. is not free in `body`
-def genFresh (arg : Exp) (body : Exp) (var : String) : String :=
-  let idx := max (parseString var)
-                 (max (findHighestIdx arg)
-                      (findHighestIdx body))
-  "var" ++ (toString (idx + 1))
-
+-- custom termination metric for `subst`. this is just the default `sizeOf` that
+-- leans generates, but we ignore the size of strings (since these can be
+-- modified by capture avoiding subsition, but are not iterated over during substitution)
 def depth : (e : Exp) → Nat
 | Var _ => 1
 | App a b => 1 + depth a + depth b
 | Lam _ b => 1 + depth b
 
+-- the depth of a renamed term is the same as the depth of the original term
 theorem depth_rename α β γ : depth (rename α β γ) = depth α := by
   induction α with
   | Var n =>
@@ -94,58 +75,14 @@ theorem depth_rename α β γ : depth (rename α β γ) = depth α := by
       · simp [depth]
       · simp [depth, ihm]
 
--- TODO: this doesn't actually need to be partial...
 def subst (target : Exp) (var : String) (arg : Exp) : Exp :=
   match target with
   | Var nm => if nm == var then arg else Var nm
   | App α β =>
-      have : depth α < depth (App α β) := by
-        cases α with
-        | Var x =>
-            refine Nat.lt_add_right (depth β) ?Var.h
-            exact Nat.lt_of_sub_eq_succ rfl
-        | App x y =>
-            simp [depth]
-            refine Nat.lt_add_right (depth β) ?App.h
-            refine Nat.lt_add_of_pos_left ?App.h.a
-            exact Nat.zero_lt_one
-        | Lam x y =>
-            unfold depth
-            refine Nat.lt_add_right (depth β) ?Lam.h
-            simp [depth]
-            refine Nat.add_lt_add_left ?Lam.h.h 1
-            refine Nat.lt_add_of_pos_left ?Lam.h.h.a
-            exact Nat.zero_lt_one
-      have : depth β < depth (App α β) := by
-        cases β with
-        | Var x =>
-            simp [depth]
-            refine Nat.lt_add_of_pos_left ?Var.a
-            refine Nat.add_pos_left ?Var.a.h (depth α)
-            exact Nat.zero_lt_one
-        | App x y =>
-            simp [depth]
-            refine Nat.lt_add_of_pos_left ?App.a
-            refine Nat.add_pos_left ?App.a.h (depth α)
-            exact Nat.zero_lt_one
-        | Lam x y =>
-            unfold depth
-            refine Nat.add_lt_add ?Lam.h₁ ?Lam.h₂
-            · apply Nat.lt_add_of_pos_right
-              cases α with
-              | Var n => simp [depth]
-              | App n m =>
-                  simp [depth]
-                  refine Nat.add_pos_left ?Lam.h₁.h.App.h (depth m)
-                  refine Nat.add_pos_left ?Lam.h₁.h.App.h.h (depth n)
-                  exact Nat.zero_lt_one
-              | Lam n m =>
-                  simp [depth]
-                  refine Nat.add_pos_left ?Lam.h₁.h.Lam.h (depth m)
-                  exact Nat.zero_lt_one
-            · simp [depth]
-              refine Nat.lt_add_of_pos_left ?Lam.h₂.a
-              exact Nat.zero_lt_one
+      -- termination
+      have : depth α < depth (App α β) := by simp [depth, Nat.lt_add_right, Nat.lt_add_of_pos_left]
+      have : depth β < depth (App α β) := by simp [depth, Nat.lt_add_right, Nat.lt_add_of_pos_left]
+      -- recurse
       App (subst α var arg) (subst β var arg)
   | Lam nm body =>
       -- do we need to rename (to avoid capture)
@@ -157,36 +94,42 @@ def subst (target : Exp) (var : String) (arg : Exp) : Exp :=
         let renamed := rename body nm fresh
 
         -- termination
-        have depth_pres : depth body = depth renamed := by
-          induction body with
-          | Var x =>
-              simp [depth, renamed, rename]
-              split
-              · simp [depth]
-              · simp [depth]
-          | App x y ihx ihy =>
-              dsimp [renamed, fresh] at *
-              simp [rename, depth, ihx, ihy]
-              simp [depth_rename]
-          | Lam x y =>
-              dsimp [renamed, fresh]
-              simp [depth, depth_rename]
         have : depth renamed < depth (Lam nm body) := by
-          simp [depth, depth_pres]
-          refine Nat.lt_add_of_pos_left ?Lam.h.h.a
+          simp [depth, renamed, depth_rename, Nat.lt_add_of_pos_left]
 
         -- substitute references to `var` with `renamed` in the body
         Lam fresh (subst renamed var arg)
 
       else
         -- termination
-        have : depth body < depth (Lam nm body) := by
-          simp [depth]
-          refine Nat.lt_add_of_pos_left ?Lam.h.h.a
+        have : depth body < depth (Lam nm body) := by simp [depth, Nat.lt_add_of_pos_left]
         -- recurse
         Lam nm (subst body var arg)
   termination_by (depth target)
 where
+  -- gets the numeric suffix from a string if it is of the form
+  -- "varX" where X is a Nat
+  parseString (str : String) : Nat :=
+    if str.startsWith "var"
+    then Option.getD (str.drop 3).toNat? 0
+    else 0
+
+  -- finds the highest suffix of all variables of the form "varX" in `arg`
+  findHighestIdx : (arg : Exp) → Nat
+  | Var s => parseString s
+  | App a b => max (findHighestIdx a) (findHighestIdx b)
+  | Lam nm body => max (parseString nm) (findHighestIdx body)
+
+  -- generates a name that:
+  --  1. is not the same as `var`
+  --  2. is not free in `arg`
+  --  3. is not free in `body`
+  genFresh (arg : Exp) (body : Exp) (var : String) : String :=
+    let idx := max (parseString var)
+                   (max (findHighestIdx arg)
+                        (findHighestIdx body))
+    "var" ++ (toString (idx + 1))
+
   -- traverses `exp` and checks if `nm` is a free variable
   freeIn (exp : Exp) (nm : String) : Bool := match exp with
   | Var b => nm == b
