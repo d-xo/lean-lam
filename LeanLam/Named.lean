@@ -1,4 +1,5 @@
 import Lean
+import Aesop
 
 -- the lambda calculus
 namespace Named
@@ -42,6 +43,7 @@ def formatExp : (e : Exp) → Std.Format
 
 -- rename all references to `before` in `exp` to refer to `after`
 -- INVARIANT: `after` must be fresh in all scopes contained in `exp`
+@[simp]
 def rename (exp : Exp) (before : String) (after : String) := match exp with
 | Var nm => if nm == before then Var after else Var nm
 | App a b => App (rename a before after) (rename b before after)
@@ -56,40 +58,20 @@ def rename (exp : Exp) (before : String) (after : String) := match exp with
 -- custom termination metric for `subst`. this is just the default `sizeOf` that
 -- leans generates, but we ignore the size of strings (since these can be
 -- modified by capture avoiding subsition, but are not iterated over during substitution)
+@[simp]
 def depth : (e : Exp) → Nat
 | Var _ => 1
 | App a b => 1 + depth a + depth b
 | Lam _ b => 1 + depth b
 
 -- the depth of a renamed term is the same as the depth of the original term
-theorem depth_rename α β γ : depth (rename α β γ) = depth α := by
-  induction α with
-  | Var n =>
-      simp [depth, rename]
-      split
-      · simp [depth]
-      · simp [depth]
-  | App n m ihn ihm => simp [depth, ihn, ihm]
-  | Lam n m ihm =>
-      simp [depth, rename]
-      split
-      · simp [depth]
-      · simp [depth, ihm]
+@[simp]
+theorem depth_rename α β γ : depth (rename α β γ) = depth α := by induction α <;> aesop
 
 def subst (target : Exp) (var : String) (arg : Exp) : Exp :=
   match target with
   | Var nm => if nm == var then arg else Var nm
   | App α β =>
-      -- termination
-      have : depth α < depth (App α β) := by
-        simp [depth]
-
-
-        /- , Nat.lt_add_right, Nat.lt_add_of_pos_left] -/
-        refine Nat.lt_add_right (depth β) ?h
-
-        apply?
-      have : depth β < depth (App α β) := by simp [depth, Nat.lt_add_right, Nat.lt_add_of_pos_left]
       -- recurse
       App (subst α var arg) (subst β var arg)
   | Lam nm body =>
@@ -100,17 +82,9 @@ def subst (target : Exp) (var : String) (arg : Exp) : Exp :=
         let fresh := genFresh arg body var
         -- replace all references to `nm` in `body` to `fresh`
         let renamed := rename body nm fresh
-
-        -- termination
-        have : depth renamed < depth (Lam nm body) := by
-          simp [depth, renamed, depth_rename, Nat.lt_add_of_pos_left]
-
         -- substitute references to `var` with `renamed` in the body
         Lam fresh (subst renamed var arg)
-
       else
-        -- termination
-        have : depth body < depth (Lam nm body) := by simp [depth, Nat.lt_add_of_pos_left]
         -- recurse
         Lam nm (subst body var arg)
   termination_by (depth target)
