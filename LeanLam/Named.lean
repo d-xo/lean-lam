@@ -1,10 +1,11 @@
 import Lean
-open Lean
-open Lean.Parser
-open Meta
 
 -- the lambda calculus
 namespace Named
+
+open Lean
+open Lean.Parser
+open Meta
 
 -- de bruijn indexed lambda terms
 inductive Exp
@@ -15,22 +16,22 @@ deriving Repr, BEq
 
 namespace Exp
 
-declare_syntax_cat lam
-syntax str             : lam
-syntax ident           : lam
-syntax lam lam         : lam
-syntax "λ" str "." lam : lam
-syntax " ( " lam " ) " : lam -- bracketed expressions
+declare_syntax_cat lam_nm
+syntax str             : lam_nm
+syntax ident           : lam_nm
+syntax lam_nm lam_nm         : lam_nm
+syntax "λ" str "." lam_nm : lam_nm
+syntax " ( " lam_nm " ) " : lam_nm -- bracketed expressions
 
--- Auxiliary notation for translating `lam` into `term`
-syntax " ⟪ " lam " ⟫ " : term
+-- Auxiliary notation for translating `lam_nm` into `term`
+syntax " ⟪ " lam_nm " ⟫ " : term
 
 macro_rules
   | `(⟪ $i:ident ⟫)       => `($i)
   | `(⟪ $n:str ⟫)         => `(Var $n)
-  | `(⟪ $x:lam $y:lam ⟫)  => `(App ⟪ $x ⟫ ⟪ $y ⟫)
-  | `(⟪ λ$s:str.$x:lam ⟫) => `(Lam $s ⟪ $x ⟫)
-  | `(⟪ ( $x:lam ) ⟫)     => `(⟪ $x ⟫)
+  | `(⟪ $x:lam_nm $y:lam_nm ⟫)  => `(App ⟪ $x ⟫ ⟪ $y ⟫)
+  | `(⟪ λ$s:str.$x:lam_nm ⟫) => `(Lam $s ⟪ $x ⟫)
+  | `(⟪ ( $x:lam_nm ) ⟫)     => `(⟪ $x ⟫)
 
 def formatExp : (e : Exp) → Std.Format
 | Var i   => i
@@ -80,7 +81,14 @@ def subst (target : Exp) (var : String) (arg : Exp) : Exp :=
   | Var nm => if nm == var then arg else Var nm
   | App α β =>
       -- termination
-      have : depth α < depth (App α β) := by simp [depth, Nat.lt_add_right, Nat.lt_add_of_pos_left]
+      have : depth α < depth (App α β) := by
+        simp [depth]
+
+
+        /- , Nat.lt_add_right, Nat.lt_add_of_pos_left] -/
+        refine Nat.lt_add_right (depth β) ?h
+
+        apply?
       have : depth β < depth (App α β) := by simp [depth, Nat.lt_add_right, Nat.lt_add_of_pos_left]
       -- recurse
       App (subst α var arg) (subst β var arg)
@@ -157,3 +165,6 @@ def β : Nat → Exp → Exp
 def y := ⟪ λ"f". (λ"x". "f" ("x" "x")) (λ "x". "f" ("x" "x")) ⟫
 #eval (formatExp (β 10 (⟪y "z"⟫)))
 #eval (formatExp (β 50 (⟪y (λ"y" . "y")⟫)))
+
+end Exp
+end Named

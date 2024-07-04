@@ -12,22 +12,22 @@ deriving Repr, BEq
 
 namespace Exp
 
-declare_syntax_cat lam
-syntax num      : lam
-syntax ident    : lam
-syntax lam lam  : lam
-syntax "λ." lam : lam
-syntax " ( " lam " ) " : lam -- bracketed expressions
+declare_syntax_cat lam_db
+syntax num      : lam_db
+syntax ident    : lam_db
+syntax lam_db lam_db  : lam_db
+syntax "λ." lam_db : lam_db
+syntax " ( " lam_db " ) " : lam_db -- bracketed expressions
 
--- Auxiliary notation for translating `lam` into `term`
-syntax " ⟪ " lam " ⟫ " : term
+-- Auxiliary notation for translating `lam_db` into `term`
+syntax " ⟪ " lam_db " ⟫ " : term
 
 macro_rules
   | `(⟪ $num:num ⟫)      => `(Var $num)
   | `(⟪ $i:ident ⟫)      => `($i)
-  | `(⟪ $x:lam $y:lam ⟫) => `(App ⟪ $x ⟫ ⟪ $y ⟫)
-  | `(⟪ λ.$x:lam ⟫)      => `(Lam ⟪ $x ⟫)
-  | `(⟪ ( $x:lam ) ⟫)    => `(⟪ $x ⟫)
+  | `(⟪ $x:lam_db $y:lam_db ⟫) => `(App ⟪ $x ⟫ ⟪ $y ⟫)
+  | `(⟪ λ.$x:lam_db ⟫)      => `(Lam ⟪ $x ⟫)
+  | `(⟪ ( $x:lam_db ) ⟫)    => `(⟪ $x ⟫)
 
 def formatExp : (e : Exp) → Std.Format
 | Var i   => repr i
