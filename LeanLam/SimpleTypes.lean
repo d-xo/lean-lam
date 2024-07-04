@@ -48,13 +48,13 @@ def infer (ctx : Γ) : (exp : Exp) → Option Ty
 def typecheck : (judgement : Judgement) → Bool
 | .Judgement ctx exp ty => infer ctx exp == some ty
 
-inductive Judge : Γ → Exp → Ty → Type u where
+inductive Judge : Γ → Exp → Ty → Prop where
 | TInt : Judge ctx (.Num n) (.Int)
 | TUnit : Judge ctx .Unit .Unit
 | TAdd (_ : Judge ctx l .Int) (_ : Judge ctx r .Int) : Judge ctx (.Add l r) .Int
 | TAbs (_ : Judge (HashMap.insert ctx (.Var s) τ) body τ') : Judge ctx (.Lam nm τ body) (.Arrow τ τ')
 | TApp (_ : Judge ctx fn (.Arrow τ ret)) (_ : Judge ctx arg τ) : Judge ctx (.App fn arg) ret
 
-theorem add104 : Judge empty (.Add (.Num 10) (.Num 4)) .Int := .TAdd .TInt .TInt
+theorem add104 : Judge HashMap.empty (.Add (.Num 10) (.Num 4)) .Int := .TAdd .TInt .TInt
 
 end STLC
