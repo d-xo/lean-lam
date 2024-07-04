@@ -2,7 +2,7 @@
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs/nixpkgs-unstable";
     flake-utils.url = "github:numtide/flake-utils";
-    lean4.url = "github:leanprover/lean4";
+    lean4.url = "github:leanprover/lean4/v4.9.0";
   };
 
   outputs = ins : ins.flake-utils.lib.eachDefaultSystem (system : let
