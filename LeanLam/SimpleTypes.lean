@@ -2,6 +2,7 @@
 -- https://en.wikipedia.org/wiki/Simply_typed_lambda_calculus#Typing_rules
 
 import Lean.Data.HashMap
+import Aesop
 open Lean
 
 namespace STLC
@@ -10,7 +11,35 @@ inductive Ty where
 | Int : Ty
 | Unit : Ty
 | Arrow : Ty → Ty → Ty
-deriving BEq, Hashable
+deriving BEq, DecidableEq, Hashable
+
+instance : LawfulBEq Ty where
+  rfl {a} := by
+    induction a with
+    | Int => rfl
+    | Unit => rfl
+    | Arrow τ τ' ihτ ihτ' => sorry
+  eq_of_beq {a b} := by
+    induction a generalizing b with
+    | Int =>
+      cases b
+      · simp
+      · intros; contradiction
+      · intros; contradiction
+    | Unit =>
+      cases b
+      · intros; contradiction
+      · simp
+      · intros; contradiction
+    | Arrow x y ihx ihy =>
+      cases b
+      · simp [ihx, ihy]
+        exact rfl
+      · simp [ihx, ihy]
+        exact rfl
+      · simp [ihx, ihy]
+        intro h
+        sorry
 
 inductive Exp where
 | Var : String → Exp
@@ -95,10 +124,32 @@ inductive well_typed : Γ → Exp → Ty → Prop where
 
 theorem add104 : well_typed ctx (.Add (.Num 10) (.Num 4)) .Int := .well_typed (.TAdd ctx (.TInt ctx) (.TInt ctx))
 
-def format : has_type ctx e τ → String
+def format_proof : has_type ctx e τ → String
 | .TInt _ => ".TInt"
 | _ => sorry
 
+-- traverses `exp` and checks if it is of type `τ` under `ctx`. returns evidence of this judgement if it holds.
+def typecheck (ctx : Γ) : (exp : Exp) → (τ : Ty) → Option (has_type ctx exp τ)
+| .Unit, .Unit => some (.TUnit ctx)
+| .Num _, .Int => some (.TInt ctx)
+| .Add l r, .Int => do
+    let lj ← typecheck ctx l .Int
+    let rj ← typecheck ctx r .Int
+    some (.TAdd ctx lj rj)
+| .Var s, τ =>
+    if h : HashMap.find? ctx (.Var s) == some τ
+    then some (.TVar ctx (.Var s) τ (by apply eq_of_beq; assumption))
+    else none
+| .Lam arg ty body, .Arrow x y =>
+    if h : x == ty
+    then do
+      let sub ← typecheck (HashMap.insert ctx (.Var arg) ty) body y
+      have : x = ty := by apply eq_of_beq; assumption
+      pure (this ▸ (.TAbs ctx arg body ty y sub))
+    else none
+-- TODO: need to infer here?
+| .App l r, _  => sorry
+| _, _=> none
 
 
 -- TODO: lexi homework
