@@ -1,4 +1,5 @@
 -- The simply typed lambda calculus
+-- https://en.wikipedia.org/wiki/Simply_typed_lambda_calculus#Typing_rules
 
 import Lean.Data.HashMap
 open Lean
@@ -21,6 +22,10 @@ inductive Exp where
 deriving BEq, Hashable
 
 abbrev Γ := Lean.HashMap Exp Ty
+
+-- impl 1 --
+
+namespace Impl1
 
 inductive Judgement where
 | Judgement (ctx : Γ) (exp : Exp) (ty : Ty) : Judgement
@@ -48,13 +53,57 @@ def infer (ctx : Γ) : (exp : Exp) → Option Ty
 def typecheck : (judgement : Judgement) → Bool
 | .Judgement ctx exp ty => infer ctx exp == some ty
 
-inductive Judge : Γ → Exp → Ty → Prop where
-| TInt : Judge ctx (.Num n) (.Int)
-| TUnit : Judge ctx .Unit .Unit
-| TAdd (_ : Judge ctx l .Int) (_ : Judge ctx r .Int) : Judge ctx (.Add l r) .Int
-| TAbs (_ : Judge (HashMap.insert ctx (.Var s) τ) body τ') : Judge ctx (.Lam nm τ body) (.Arrow τ τ')
-| TApp (_ : Judge ctx fn (.Arrow τ ret)) (_ : Judge ctx arg τ) : Judge ctx (.App fn arg) ret
+end Impl1
 
-theorem add104 : Judge HashMap.empty (.Add (.Num 10) (.Num 4)) .Int := .TAdd .TInt .TInt
+-- impl 2 --
+
+namespace IndProp
+
+inductive has_type : Γ → Exp → Ty → Type where
+| TInt  :
+   ∀ Γ
+   , has_type Γ (.Num n) .Int
+
+| TUnit :
+    ∀ Γ
+    , has_type Γ .Unit .Unit
+
+| TVar :
+    ∀ Γ exp τ
+    , HashMap.find? Γ exp = some τ
+    → has_type Γ exp τ
+
+| TAdd :
+    ∀ Γ
+    , has_type Γ l .Int
+    → has_type Γ r .Int
+    → has_type Γ (.Add l r) .Int
+
+| TAbs :
+    ∀ Γ nm body τ τ'
+    , has_type (HashMap.insert Γ (.Var nm) τ) body τ'
+    → has_type Γ (.Lam nm τ body) (.Arrow τ τ')
+
+| TApp :
+    ∀ Γ fn arg τ τ'
+    , has_type Γ fn (.Arrow τ τ')
+    → has_type Γ arg τ
+    → has_type Γ (.App fn arg) τ'
+
+inductive well_typed : Γ → Exp → Ty → Prop where
+| well_typed : has_type ctx e τ → well_typed ctx e τ
+
+theorem add104 : well_typed ctx (.Add (.Num 10) (.Num 4)) .Int := .well_typed (.TAdd ctx (.TInt ctx) (.TInt ctx))
+
+def format : has_type ctx e τ → String
+| .TInt _ => ".TInt"
+| _ => sorry
+
+
+
+-- TODO: lexi homework
+/- def typecheck (ctx : Γ) (exp : Exp) (ty: Ty) : (Option (has_type ctx exp ty)) := sorry -/
+
+end IndProp
 
 end STLC
