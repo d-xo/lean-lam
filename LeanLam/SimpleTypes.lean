@@ -7,18 +7,32 @@ open Lean
 
 namespace STLC
 
+-- Type Specifications --
+
 inductive Ty where
 | Int : Ty
 | Unit : Ty
 | Arrow : Ty → Ty → Ty
-deriving BEq, DecidableEq, Hashable
+deriving DecidableEq, Hashable
+
+-- TODO: why can't I just use the LawfulBEq instance here:
+-- https://github.com/leanprover/lean4/blob/8f9843a4a5fe1b0c2f24c74097f296e2818771ee/src/Init/Core.lean#L635C1-L637C37
+protected def beq : Ty → Ty → Bool
+| .Int, .Int => true
+| .Unit, .Unit => true
+| .Arrow fn1 arg1, .Arrow fn2 arg2 => STLC.beq fn1 fn2 && STLC.beq arg1 arg2
+| _, _ => false
+
+instance : BEq Ty := ⟨STLC.beq⟩
 
 instance : LawfulBEq Ty where
   rfl {a} := by
     induction a with
     | Int => rfl
     | Unit => rfl
-    | Arrow τ τ' ihτ ihτ' => sorry
+    | Arrow τ τ' ihτ ihτ' =>
+        simp [BEq.beq, STLC.beq] at *
+        apply And.intro <;> assumption
   eq_of_beq {a b} := by
     induction a generalizing b with
     | Int =>
@@ -32,14 +46,21 @@ instance : LawfulBEq Ty where
       · simp
       · intros; contradiction
     | Arrow x y ihx ihy =>
-      cases b
-      · simp [ihx, ihy]
-        exact rfl
-      · simp [ihx, ihy]
-        exact rfl
-      · simp [ihx, ihy]
-        intro h
-        sorry
+      cases b with
+      | Unit =>
+          simp [ihx, ihy]
+          exact rfl
+      | Int =>
+          simp [ihx, ihy]
+          exact rfl
+      | Arrow m n =>
+          simp [BEq.beq, STLC.beq, ihx, ihy] at *
+          intros h h'
+          apply And.intro
+          · apply (ihx h)
+          · apply (ihy h')
+
+-- Expressions --
 
 inductive Exp where
 | Var : String → Exp
@@ -50,15 +71,13 @@ inductive Exp where
 | Unit : Exp
 deriving BEq, Hashable
 
+-- Typing Context --
+
 abbrev Γ := Lean.HashMap Exp Ty
 
--- impl 1 --
+-- Type Inference --
 
-namespace Impl1
-
-inductive Judgement where
-| Judgement (ctx : Γ) (exp : Exp) (ty : Ty) : Judgement
-
+-- TODO: can this be made to return a `has_type` judgement?
 def infer (ctx : Γ) : (exp : Exp) → Option Ty
 | .Var s => HashMap.find? ctx (.Var s)
 | .Num _ => some .Int
@@ -79,14 +98,11 @@ def infer (ctx : Γ) : (exp : Exp) → Option Ty
   | _ => none
 | .Unit => some .Unit
 
-def typecheck : (judgement : Judgement) → Bool
-| .Judgement ctx exp ty => infer ctx exp == some ty
+-- Shallow Embedding of Typing Rules --
 
-end Impl1
+namespace Shallow
 
--- impl 2 --
-
-namespace IndProp
+-- Typing Judgements --
 
 inductive has_type : Γ → Exp → Ty → Type where
 | TInt  :
@@ -119,14 +135,13 @@ inductive has_type : Γ → Exp → Ty → Type where
     → has_type Γ arg τ
     → has_type Γ (.App fn arg) τ'
 
+-- Embed Typing Judgements into Prop --
+
 inductive well_typed : Γ → Exp → Ty → Prop where
 | well_typed : has_type ctx e τ → well_typed ctx e τ
 
-theorem add104 : well_typed ctx (.Add (.Num 10) (.Num 4)) .Int := .well_typed (.TAdd ctx (.TInt ctx) (.TInt ctx))
 
-def format_proof : has_type ctx e τ → String
-| .TInt _ => ".TInt"
-| _ => sorry
+-- Typechecking --
 
 -- traverses `exp` and checks if it is of type `τ` under `ctx`. returns evidence of this judgement if it holds.
 def typecheck (ctx : Γ) : (exp : Exp) → (τ : Ty) → Option (has_type ctx exp τ)
@@ -148,13 +163,22 @@ def typecheck (ctx : Γ) : (exp : Exp) → (τ : Ty) → Option (has_type ctx ex
       pure (this ▸ (.TAbs ctx arg body ty y sub))
     else none
 -- TODO: need to infer here?
-| .App l r, _  => sorry
+| .App fn arg, τ => do
+    -- infer a type for the argument
+    let argTy ← infer ctx arg
+    -- produce evidence that the infered type is correct
+    -- TODO: inefficient to traverse twice here...
+    let argJudge ← typecheck ctx arg argTy
+    let fnJudge ← typecheck ctx fn (.Arrow argTy τ)
+    some (.TApp ctx fn arg argTy τ fnJudge argJudge)
 | _, _=> none
 
+end Shallow
 
--- TODO: lexi homework
-/- def typecheck (ctx : Γ) (exp : Exp) (ty: Ty) : (Option (has_type ctx exp ty)) := sorry -/
+-- Deep Embedding of Typing Rules --
 
-end IndProp
+-- TODO: denis!
+namespace Deep
+end Deep
 
 end STLC
