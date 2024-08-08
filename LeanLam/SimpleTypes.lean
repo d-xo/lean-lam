@@ -2,7 +2,6 @@
 -- https://en.wikipedia.org/wiki/Simply_typed_lambda_calculus#Typing_rules
 
 import Lean.Data.HashMap
-import Aesop
 open Lean
 
 namespace STLC
