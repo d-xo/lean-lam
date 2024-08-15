@@ -2,6 +2,7 @@
 -- https://en.wikipedia.org/wiki/Simply_typed_lambda_calculus#Typing_rules
 
 import Lean.Data.HashMap
+import Aesop
 open Lean
 
 namespace STLC
@@ -16,48 +17,20 @@ deriving DecidableEq, Hashable
 
 -- TODO: why can't I just use the LawfulBEq instance here:
 -- https://github.com/leanprover/lean4/blob/8f9843a4a5fe1b0c2f24c74097f296e2818771ee/src/Init/Core.lean#L635C1-L637C37
+@[simp]
 protected def beq : Ty → Ty → Bool
 | .Int, .Int => true
 | .Unit, .Unit => true
 | .Arrow fn1 arg1, .Arrow fn2 arg2 => STLC.beq fn1 fn2 && STLC.beq arg1 arg2
 | _, _ => false
 
+@[simp]
 instance : BEq Ty := ⟨STLC.beq⟩
 
 instance : LawfulBEq Ty where
-  rfl {a} := by
-    induction a with
-    | Int => rfl
-    | Unit => rfl
-    | Arrow τ τ' ihτ ihτ' =>
-        simp [BEq.beq, STLC.beq] at *
-        apply And.intro <;> assumption
+  rfl {a} := by induction a <;> simp_all
   eq_of_beq {a b} := by
-    induction a generalizing b with
-    | Int =>
-      cases b
-      · simp
-      · intros; contradiction
-      · intros; contradiction
-    | Unit =>
-      cases b
-      · intros; contradiction
-      · simp
-      · intros; contradiction
-    | Arrow x y ihx ihy =>
-      cases b with
-      | Unit =>
-          simp [ihx, ihy]
-          exact rfl
-      | Int =>
-          simp [ihx, ihy]
-          exact rfl
-      | Arrow m n =>
-          simp [BEq.beq, STLC.beq, ihx, ihy] at *
-          intros h h'
-          apply And.intro
-          · apply (ihx h)
-          · apply (ihy h')
+    induction a generalizing b <;> (cases b <;> aesop)
 
 -- Expressions --
 
@@ -77,6 +50,7 @@ abbrev Γ := Lean.HashMap Exp Ty
 -- Type Inference --
 
 -- TODO: can this be made to return a `has_type` judgement?
+-- worst case complexity of: O(2^d) where d is the depth of exp
 def infer (ctx : Γ) : (exp : Exp) → Option Ty
 | .Var s => HashMap.find? ctx (.Var s)
 | .Num _ => some .Int
@@ -103,47 +77,47 @@ namespace Shallow
 
 -- Typing Judgements --
 
-inductive has_type : Γ → Exp → Ty → Type where
+inductive well_typed : Γ → Exp → Ty → Type where
 | TInt  :
    ∀ Γ
-   , has_type Γ (.Num n) .Int
+   , well_typed Γ (.Num n) .Int
 
 | TUnit :
     ∀ Γ
-    , has_type Γ .Unit .Unit
+    , well_typed Γ .Unit .Unit
 
 | TVar :
     ∀ Γ exp τ
     , HashMap.find? Γ exp = some τ
-    → has_type Γ exp τ
+    → well_typed Γ exp τ
 
 | TAdd :
     ∀ Γ
-    , has_type Γ l .Int
-    → has_type Γ r .Int
-    → has_type Γ (.Add l r) .Int
+    , well_typed Γ l .Int
+    → well_typed Γ r .Int
+    → well_typed Γ (.Add l r) .Int
 
 | TAbs :
     ∀ Γ nm body τ τ'
-    , has_type (HashMap.insert Γ (.Var nm) τ) body τ'
-    → has_type Γ (.Lam nm τ body) (.Arrow τ τ')
+    , well_typed (HashMap.insert Γ (.Var nm) τ) body τ'
+    → well_typed Γ (.Lam nm τ body) (.Arrow τ τ')
 
 | TApp :
     ∀ Γ fn arg τ τ'
-    , has_type Γ fn (.Arrow τ τ')
-    → has_type Γ arg τ
-    → has_type Γ (.App fn arg) τ'
+    , well_typed Γ fn (.Arrow τ τ')
+    → well_typed Γ arg τ
+    → well_typed Γ (.App fn arg) τ'
 
 -- Embed Typing Judgements into Prop --
 
-inductive well_typed : Γ → Exp → Ty → Prop where
-| well_typed : has_type ctx e τ → well_typed ctx e τ
+inductive judgement : Γ → Exp → Ty → Prop where
+| judgement : well_typed ctx e τ → judgement ctx e τ
 
 
 -- Typechecking --
 
 -- traverses `exp` and checks if it is of type `τ` under `ctx`. returns evidence of this judgement if it holds.
-def typecheck (ctx : Γ) : (exp : Exp) → (τ : Ty) → Option (has_type ctx exp τ)
+def typecheck (ctx : Γ) : (exp : Exp) → (τ : Ty) → Option (well_typed ctx exp τ)
 | .Unit, .Unit => some (.TUnit ctx)
 | .Num _, .Int => some (.TInt ctx)
 | .Add l r, .Int => do
@@ -161,7 +135,6 @@ def typecheck (ctx : Γ) : (exp : Exp) → (τ : Ty) → Option (has_type ctx ex
       have : x = ty := by apply eq_of_beq; assumption
       pure (this ▸ (.TAbs ctx arg body ty y sub))
     else none
--- TODO: need to infer here?
 | .App fn arg, τ => do
     -- infer a type for the argument
     let argTy ← infer ctx arg
