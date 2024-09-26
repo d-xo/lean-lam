@@ -14,6 +14,8 @@
   - substitution
   - match
   - typecheck
+  - reduce (β)
+  - evaluate (fixpoint of β reduction)
   - examples
 3. structures
   - definition
@@ -219,10 +221,30 @@ def Exp.typecheck: Exp → Option Ty
 |.Num _ => some .Int
 |.Unit => some .Unit
 
+-- assume its typechecked
+def Exp.reduce: Exp → Exp
+| .App (.Lam name _ exp) exp2 => Exp.substitute [(name, exp2)] exp
+| .App exp1 exp2 => .App exp1.reduce exp2.reduce
+| .Add (.Num n) (.Num m) => .Num (n + m)
+| .Add a b => .Add a.reduce b.reduce
+| .Lam name ty exp => .Lam name ty exp.reduce
+| .Num a => .Num a
+| .Unit => .Unit
+| .Var a => .Var a
+
+-- evaluate
+-- TODO: this should not be partial but total
+partial def Exp.eval (e : Exp) : Exp :=
+  if e' == e then e else e'.eval
+  where 
+    e' := e.reduce
+
 -- examples
 def expVar : Exp := Exp.Var "var1"
 def expNum : Exp := Exp.Num 4
 def expAdd : Exp := Exp.Add expVar expNum
+def expAddNumNum : Exp := Exp.Add expNum expNum
+def expAddNumNumNum : Exp := Exp.Add expNum (Exp.Add expNum expNum)
 def expLam : Exp := Exp.Lam "x" Ty.Int expAdd
 def expLam_ : Exp := Exp.Lam "x" Ty.Int (Exp.Add expVar (Exp.Var "x"))
 def expApp : Exp := Exp.App expLam expNum
@@ -250,6 +272,7 @@ def substX : Substitution Exp    := [("x", Exp.Num 3)]
 #eval Exp.match expApp_ expApp
 #eval Exp.match expVar expApp
 
+#eval Exp.eval expAddNumNumNum
 
 
 
