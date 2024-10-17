@@ -20,8 +20,7 @@
 3. structures
   - definition
   - format
-  - substitute
-  - propagate
+  - substitute - propagate
   - match
   - examples
 4. sequent
@@ -54,8 +53,12 @@ Also a different way to implement structures in general would be nice, since it 
 
 -/
 
-import Lean.Data.HashMap
+import Parser
+
 open Lean
+open Parser Char
+
+
 
 namespace deeep
 
@@ -79,6 +82,7 @@ def Substitution.format [ToString α]: Substitution α → String := formatSubst
 instance [ToString α]: ToString (Substitution α) where
   toString s := s!"[{formatSubstitution s}]"
 
+
 -- 1. types
 -- definition
 inductive Ty where
@@ -86,14 +90,76 @@ inductive Ty where
 | Unit : Ty
 | Arrow : Ty → Ty → Ty
 | Var : String → Ty
-deriving Repr, BEq, DecidableEq, Hashable
+deriving Repr, BEq, DecidableEq, Hashable, Inhabited
+
+/-- BNF parser monad -/
+abbrev BNFParser := SimpleParser Substring Char
+
+/-- Parser for <name-character> -/
+def nameCharacter : BNFParser Char :=
+  withErrorMessage "<name-character>" do
+    ASCII.alphanum <|> char '-'
+/-- Parser for <name-string> -/
+def nameString : BNFParser String :=
+  withErrorMessage "<name-string>" do
+    foldl String.push "" nameCharacter
+/-- Parser for <letter> -/
+def letter : BNFParser Char :=
+  withErrorMessage "<letter>" do
+    ASCII.alpha
+/-- Parser for <spaces>  -/
+def spaces : BNFParser Unit :=
+  withErrorMessage "<spaces>" do
+    dropMany (char ' ')
+
+/-- Parser for <name> -/
+def var: BNFParser Ty :=
+  withErrorMessage "<name>" do
+    let a ← letter
+    let s ← nameString
+    return Ty.Var $ a.toString ++ s
+
+def uunit : BNFParser Ty := 
+  withErrorMessage "<unit>" do
+    let _ ← string "unit"
+    return Ty.Unit
+
+def int: BNFParser Ty := 
+  withErrorMessage "<int>" do
+    let _ ← chars "int"
+    return Ty.Int
+
+mutual
+
+partial def tyParser: BNFParser Ty := 
+  withErrorMessage "<name-character>" do
+    uunit <|> int <|> var <|> arrow
+
+partial def arrow: BNFParser Ty := 
+  withErrorMessage "<name-character>" do
+    let a ← char '(' *> tyParser <* spaces <* string "->"
+    let b ← spaces *> tyParser <* char ')'
+    return Ty.Arrow a b
+end
+
+
+
+partial def «ssyntax» : BNFParser Ty :=
+     withErrorMessage "<ty>" tyParser
+
+def Ty.parse (input : String) : Except String Ty :=
+  match (ssyntax <* Parser.endOfInput).run input.toSubstring with
+  | .ok _ stx => .ok stx
+  | .error _ err => .error ("error: " ++ toString err)
+
+
 
 --format
 def Ty.format: Ty -> String
     | Ty.Int => "int"
     | Ty.Unit => "unit"
     | Ty.Var name => s!"{name}"
-    | Ty.Arrow a b => s!"{Ty.format a}->{Ty.format b}"
+    | Ty.Arrow a b => s!"({Ty.format a} -> {Ty.format b})"
 
 instance: ToString Ty where
   toString := Ty.format
@@ -106,18 +172,6 @@ def Ty.substitute (s:Substitution Ty) : Ty → Ty
 |Ty.Int => Ty.Int
 |Ty.Unit => Ty.Unit
 |Ty.Arrow t1 t2 => Ty.Arrow (Ty.substitute s t1) (Ty.substitute s t2)
-
-
-/- def Ty.unify: Ty → Ty → Option (Substitution Ty) -/
-/- |.Var name, b => some [(name, b)] -/
-/- |a, .Var name => some [(name, a)] -/
-/- |.Int, .Int => some [] -/
-/- |.Unit, .Unit => some [] -/
-/- |.Arrow t11 t12, .Arrow t21 t22 => do -/
-/-   let σ1 ← Ty.unify t11 t21 -/
-/-   let σ2 ← Ty.unify t12 t22 -/
-/-   return σ1 ++ σ2 -/
-/- |_, _ => none -/
 
 /- match Ty needs to be unify - it goes both way -/
 def Ty.match: Ty → Ty → Option (Substitution Ty)
@@ -145,6 +199,9 @@ def tyArrow__ : Ty := Ty.Arrow tyVar tyInt
 #eval Ty.match tyArrow__ tyArrow_
 #eval Ty.match tyArrow_ tyArrow__
 
+#eval match Ty.parse "(error -> (lolhaha -> int))" with
+| .ok ty => ty.format
+| .error _ => ""
 
 
 
@@ -164,6 +221,7 @@ deriving Repr, BEq, Hashable
 def Exp.format: Exp -> String
   | Var name => s!"{name}"
   | Lam var ty exp => s!"λ{var}:{Ty.format ty}.{Exp.format exp}"
+  | App (Lam var ty exp) b => s!"(λ{var}:{Ty.format ty}.{Exp.format exp}) {Exp.format b}"
   | App a b => s!"{Exp.format a} {Exp.format b}"
   | Num n => s!"{n}"
   | Add a b => s!"{Exp.format a}+{Exp.format b}"
@@ -173,6 +231,7 @@ instance: ToString Exp where
   toString := Exp.format
 
 -- substitution
+-- LEXI: needs some renaming / debrujinification to handle capturing of free vars by binders
 def Exp.substitute (s:Substitution Exp): Exp → Exp
 |.Var name => match (s.findSome? (fun p => if p.1 == name then some p.2 else none)) with
   |some e => e 
@@ -188,6 +247,8 @@ def Exp.match: Exp → Exp → Option ((Substitution Exp) × (Substitution Ty))
   |.Var name, b => some ([(name, b)], {})
   |.Lam name ty exp, .Lam name2 ty2 exp2 => 
     /- TODO: closed names should not mather ffs. They should also be substituted or debrujinified or something -/
+    -- LEXI: this seems broken
+    -- TODO: this should produce a substituion that preserves alpha equivalence
     if name == name2
     then do 
     let σTy' <- Ty.match ty ty2
@@ -208,6 +269,7 @@ def Exp.match: Exp → Exp → Option ((Substitution Exp) × (Substitution Ty))
   |_, _ => none
 
 /- TODO: debrujinification? -/
+-- LEXI: doesn't this need a context? it's a kind of weird infer atm? or it's kinda producing a type scheme or smth? this function feels weird...
 def Exp.typecheck: Exp → Option Ty
 |.Var _ => some $ .Var "toDebrujinifyThisShit"
 |.Lam name ty exp => do
@@ -235,9 +297,10 @@ def Exp.reduce: Exp → Exp
 -- evaluate
 -- TODO: this should not be partial but total
 partial def Exp.eval (e : Exp) : Exp :=
-  if e' == e then e else e'.eval
-  where 
-    e' := e.reduce
+  let e' := Exp.reduce e
+  if e' == e 
+  then e 
+  else Exp.eval e'
 
 -- examples
 def expVar : Exp := Exp.Var "var1"
@@ -249,6 +312,8 @@ def expLam : Exp := Exp.Lam "x" Ty.Int expAdd
 def expLam_ : Exp := Exp.Lam "x" Ty.Int (Exp.Add expVar (Exp.Var "x"))
 def expApp : Exp := Exp.App expLam expNum
 def expApp_ : Exp := Exp.App expLam_ expNum
+def expLam__ : Exp := Exp.Lam "var1" Ty.Int expApp_
+def expApp__ : Exp := Exp.App expLam__ expNum
 
 def substVar1 : Substitution Exp := [("var1", Exp.Num 3)]
 def substX : Substitution Exp    := [("x", Exp.Num 3)]
@@ -258,6 +323,7 @@ def substX : Substitution Exp    := [("x", Exp.Num 3)]
 
 #eval Exp.format expApp
 #eval Exp.format expApp_
+#eval Exp.format expApp__
 #eval Exp.format expLam_
 #eval Exp.format expLam
 #eval Exp.format $ Exp.substitute substX expLam_
@@ -272,7 +338,9 @@ def substX : Substitution Exp    := [("x", Exp.Num 3)]
 #eval Exp.match expApp_ expApp
 #eval Exp.match expVar expApp
 
-#eval Exp.eval expAddNumNumNum
+#eval expAddNumNumNum.eval.format
+#eval expApp__.reduce.format
+#eval expApp__.eval.format
 
 
 
@@ -325,6 +393,7 @@ def Structure.match: Structure → Structure → Option (Substitution Structure)
 |.Empty, .Empty => some []
 -- TODO: here order should not matter, construct hash map and check for subset
 -- without it, larger proofs won't work
+-- TODO: we should recurse here
 |.Comma _ _ _, .Comma _ _ _ => some []
 |_, _ => none
 
@@ -368,7 +437,7 @@ def Sequent.match (a: Sequent) (b: Sequent) : Option SeqSubstitution := do
   -- TODO: consistency check for σTy
   --       either on this level or propagate σTy to Exp.match and do the consistency check there
   let σStr ← Structure.match a.ctx (Structure.propagate σExp σTy b.ctx)
-  return {Exp := σExp, Ty := σTy, Str := σStr}
+  return {Exp := σExp, Ty := σTy ++ σTy', Str := σStr}
 
 -- substitute
 def Sequent.substitute (σ:SeqSubstitution) (s:Sequent): Sequent := { 
@@ -505,7 +574,7 @@ def intRule : Rule := {
     | _ => False
   }
 def addRule: Rule := { 
-  name := "Num",
+  name := "Add",
   premisses := [
     {
       ctx := Structure.Var "Γ",
@@ -546,13 +615,13 @@ def appRule: Rule := {
   premisses := [
     {
       ctx := Structure.Var "Γ",
-      exp := Exp.Var "e1",
-      ty  := Ty.Arrow (Ty.Var "τ") (Ty.Var "τ'")
+      exp := Exp.Var "e2",
+      ty  := Ty.Var "τ"
     },
     {
       ctx := Structure.Var "Γ",
-      exp := Exp.Var "e2",
-      ty  := Ty.Var "τ"
+      exp := Exp.Var "e1",
+      ty  := Ty.Arrow (Ty.Var "τ") (Ty.Var "τ'")
     }
   ],
   conclusion := { 
@@ -593,6 +662,7 @@ def simpleTypedLampdaCalculus : Calculus := [
 
 -- 7. proof 
 -- definition
+-- TODO: maybe rename to Trace
 inductive Proof where
 | Qed : Sequent → Rule → Proof
 | Node : Sequent → Rule → SeqSubstitution → List Sequent → List Proof → Proof
@@ -629,23 +699,22 @@ partial def Proof.byRule (calculus : Calculus) (s : Sequent) (rule : Rule) : Opt
 
 -- given a sequent and a calculus, get all matching rules and try them until a successful proof is found or they are exhausted
 partial def Proof.prove (calculus : Calculus) (s : Sequent) : Option Proof := do
-  let seq <- inferTypeIfNeeded s
-  match calculus.findSome? (Proof.byRule calculus seq) with
+  match calculus.findSome? (Proof.byRule calculus s) with
   | some pt => pt
   | none => Proof.Failed s
 
-where
+--where
   /- TODO: this is quite ugly, but i don't know how to implement that without this rule. 
    This calculus wouldn't work IMO. It would be great to abstract the prover from the object level calculus
    but this function is highly dependant on the calculus.
    -/
-  inferTypeIfNeeded (s : Sequent) : Option Sequent := do
-    match s.ty with
-      | .Var _ => 
-        match Exp.typecheck s.exp with
-        | some ty => some {ctx := s.ctx, exp := s.exp, ty := ty}
-        | none => some s
-      | _ => some s
+  /- inferTypeIfNeeded (s : Sequent) : Option Sequent := do -/
+  /-   match s.ty with -/
+  /-     | .Var _ =>  -/
+  /-       match Exp.typecheck s.exp with -/
+  /-       | some ty => some {ctx := s.ctx, exp := s.exp, ty := ty} -/
+  /-       | none => some s -/
+  /-     | _ => some s -/
 
 end
 
@@ -655,6 +724,15 @@ end
 -- Γ ⊢ λx:τ.e:τ->τ'
 #eval Proof.prove simpleTypedLampdaCalculus seqPr1
 
+-- Γ, x:τ ⊢ x:int
+def seqWrong : Sequent := { 
+    ctx := Structure.Comma (.Var "x") (.Var "τ") $  Structure.Var "Γ",
+    exp := .Var "x"
+    ty := .Int
+    }
+#eval varRule.conclusion.format
+#eval seqWrong.format
+#eval Sequent.match varRule.conclusion seqWrong
 
 #eval intRule.conclusion
 #eval seqIntC
