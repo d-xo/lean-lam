@@ -82,15 +82,55 @@ def Substitution.format [ToString α]: Substitution α → String := formatSubst
 instance [ToString α]: ToString (Substitution α) where
   toString s := s!"[{formatSubstitution s}]"
 
+mutual
+inductive M where
+| C : L → M
+| V : String → M
+
 
 -- 1. types
 -- definition
-inductive Ty where
-| Int : Ty
-| Unit : Ty
-| Arrow : Ty → Ty → Ty
-| Var : String → Ty
-deriving Repr, BEq, DecidableEq, Hashable, Inhabited
+/- inductive Ty where -/
+/- | Int : Ty -/
+/- | Unit : Ty -/
+/- | Arrow : Ty → Ty → Ty -/
+/- deriving Repr, BEq, DecidableEq, Hashable, Inhabited -/
+
+/- inductive Exp where -/
+/- | Var : String → Exp -/
+/- | Lam : String → Ty → Exp → Exp -/
+/- | App : Exp → Exp → Exp -/
+/- | Num : Int → Exp -/
+/- | Add : Exp → Exp → Exp -/
+/- | Unit : Exp -/
+/- deriving Repr, BEq, Hashable -/
+
+inductive L where
+| Typed : M → M → L
+| T_Int : L
+| T_Unit : L
+| T_Arrow : M → M → L
+| E_Var : String → L
+| E_Lam : String → M → M → L
+| E_App : M → M → L
+| E_Num : Int → L
+| E_Add : M → M → L
+| E_Unit : L
+end
+
+inductive O where
+|Terminal : String -> O
+|Nonterminal : 
+
+
+
+
+class Object where
+-- E = Var | Lam : |
+-- T = Int | Unit
+-- TD = E : T
+--
+--
 
 /-- BNF parser monad -/
 abbrev BNFParser := SimpleParser Substring Char
@@ -175,6 +215,7 @@ def Ty.substitute (s:Substitution Ty) : Ty → Ty
 
 /- match Ty needs to be unify - it goes both way -/
 def Ty.match: Ty → Ty → Option (Substitution Ty)
+|b,Ty.Var name => some [(name, b)]
 |Ty.Var name, b => some [(name, b)]
 |Ty.Int, Ty.Int => some []
 |Ty.Unit, Ty.Unit => some []
@@ -360,8 +401,13 @@ This implementation of structure prevents us to have multiple structural variabl
 inductive Structure where
 | Empty : Structure
 | Var : String → Structure
-| Comma : Exp → Ty → Structure → Structure
+| Comma : [Object t] t → Structure → Structure
 deriving Repr
+
+instance : Object Exp where
+ 
+
+Γ, (.Var "hi") : (.Num 3) ⊢ (.Var "hi") : (.Num 3)
 
 -- format
 def Structure.format: Structure -> String
@@ -622,7 +668,7 @@ def appRule: Rule := {
       ctx := Structure.Var "Γ",
       exp := Exp.Var "e1",
       ty  := Ty.Arrow (Ty.Var "τ") (Ty.Var "τ'")
-    }
+    },
   ],
   conclusion := { 
     ctx := Structure.Var "Γ",
@@ -739,6 +785,16 @@ def seqWrong : Sequent := {
 #eval seqIntC.exp
 #eval intRule.conclusion.exp
 #eval Sequent.match intRule.conclusion seqIntC 
+
+#eval Ty.match (.Int) (.Var "τ")
+
+/-
+Is it sound to use unification when determining if it is valid to apply a proof rule? 
+How can we pass information learned (as substituions) between proof rules in a order independent way?
+What do do if we learn conflicting information in different branches of the proof?
+In general: how to propagate substitutions in a sound way?
+Homework: read about backwards chaining (propogator networks).
+-/
 
 
 end deeep
