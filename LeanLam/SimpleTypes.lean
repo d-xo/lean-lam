@@ -108,7 +108,9 @@ inductive well_typed : Γ → Exp → Ty → Type where
     → well_typed Γ arg τ
     → well_typed Γ (.App fn arg) τ'
 
+
 -- Embed Typing Judgements into Prop --
+
 
 inductive judgement : Γ → Exp → Ty → Prop where
 | judgement : well_typed ctx e τ → judgement ctx e τ

@@ -151,7 +151,7 @@ def t.format : (term : t) → String
 | bool qual val => qualify qual (b.format val)
 | ite cond l r => s!"(if {t.format cond} then {t.format l} else {t.format r})"
 | pair qual l r => qualify qual (s!"<{t.format l}, {t.format r}>")
-| split term x y subterm => s!"(split {t.format term} as {x},{y} in {t.format subterm})"
+| .split term x y subterm => s!"(split {t.format term} as {x},{y} in {t.format subterm})"
 | abs qual nm ty body => qualify qual (s!"λ {nm} : {T.format ty} . {t.format body}")
 | app l r => s!"{t.format l} {t.format r}"
 
